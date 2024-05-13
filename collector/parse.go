@@ -1,6 +1,7 @@
 package collector
 
 import (
+  "io"
 	"bufio"
 	"errors"
 	"os"
@@ -59,7 +60,17 @@ type OpStatus struct {
 }
 
 func ParseOpStatus(data string) (*OpStatus, error) {
-  return nil, nil
+  ops := &OpStatus{}
+  
+  yeetProgressBar := strings.TrimSpace(data[strings.Index(data, "]")+1:])
+  ops.Type = OpStatusType(strings.Split(yeetProgressBar, " ")[0])
+  progressStart := strings.Index(yeetProgressBar, "(")+1
+  progressEnd := strings.Index(yeetProgressBar, ")")
+  progressStrings := strings.Split(yeetProgressBar[progressStart:progressEnd], "/")
+  ops.OpProgress, _ = strconv.ParseInt(progressStrings[0], 10, 64)
+  ops.OpTotal, _ = strconv.ParseInt(progressStrings[1], 10, 64)
+
+  return ops, nil
 }
 
 func (ops *OpStatus) ProgressPercent() float32 {
@@ -245,13 +256,13 @@ func (ad *ArrayData) BlockMismatchCount() (int64, error) {
     return 0, err
   }
   
-  var mismatchCnt []byte
-  _, err = f.Read(mismatchCnt)
+  mismatchCnt, err := io.ReadAll(f)
   if err != nil {
     return 0, err
   }
 
-  out, err := strconv.Atoi(string(mismatchCnt))
+  mismatchCntStr := strings.TrimSuffix(string(mismatchCnt), "\n")
+  out, err := strconv.Atoi(mismatchCntStr)
   if err != nil {
     return 0, err
   }
