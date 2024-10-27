@@ -4,10 +4,11 @@ import (
   "io"
 	"bufio"
 	"errors"
+	"fmt"
 	"os"
-  "fmt"
 	"strconv"
 	"strings"
+
 )
 
 type RaidLevel string
@@ -35,6 +36,7 @@ type OpStatusType string
 const (
   OpStatusTypeRecovery OpStatusType = "recovery"
   OpStatusTypeCheck    OpStatusType = "check"
+  OpStatusTypeIdle     OpStatusType = "idle"
 )
 
 type ArrayDevice struct {
@@ -57,20 +59,64 @@ type OpStatus struct {
   Type        OpStatusType  `json:"op_status_type"`
   OpProgress  int64         `json:"op_progress"`
   OpTotal     int64         `json:"op_total"`
+  Speed       string         `json:"op_speed"`
 }
 
 func ParseOpStatus(data string) (*OpStatus, error) {
-  ops := &OpStatus{}
+  os := &OpStatus{}
   
-  yeetProgressBar := strings.TrimSpace(data[strings.Index(data, "]")+1:])
-  ops.Type = OpStatusType(strings.Split(yeetProgressBar, " ")[0])
-  progressStart := strings.Index(yeetProgressBar, "(")+1
-  progressEnd := strings.Index(yeetProgressBar, ")")
-  progressStrings := strings.Split(yeetProgressBar[progressStart:progressEnd], "/")
-  ops.OpProgress, _ = strconv.ParseInt(progressStrings[0], 10, 64)
-  ops.OpTotal, _ = strconv.ParseInt(progressStrings[1], 10, 64)
+  _, trimProgressBar, ok := strings.Cut(data, "] ")
+  if !ok {
+    return nil, errors.New("Unable to parse operation status")
+  }
+  
+  statusLine := strings.Trim(trimProgressBar, " ")
+  statusType, statusProgress, ok := strings.Cut(statusLine, " =")
+  if !ok {
+    return nil, errors.New("Unable to extract running operation from mdstat output")
+  }
 
-  return ops, nil
+  statusType = strings.Trim(statusType, " ")
+  os.Type = OpStatusType(statusType)
+
+  statusItems := strings.Split(statusProgress, " ")
+  if len(statusItems) == 0 {
+    return nil, errors.New("Unable to extract status of running operation")
+  }
+
+  statusBlocksIdx := -1
+  for i := 0; i <= len(statusItems)-1; i++ {
+    if strings.Contains(statusItems[i], "(") {
+      statusBlocksIdx = i
+    }
+  }
+
+  if statusBlocksIdx < 0 {
+    return nil, errors.New("Unable to extract progress of running operation")
+  }
+
+  statusBlocks := strings.Split(strings.Trim(statusItems[statusBlocksIdx], "()"), "/")
+  progressBlocks, err := strconv.ParseInt(statusBlocks[0], 10, 64)
+  if err != nil {
+    return nil, err
+  }
+
+  totalBlocks, err := strconv.ParseInt(statusBlocks[1], 10, 64)
+  if err != nil {
+    return nil, err
+  }
+
+  os.OpTotal = totalBlocks
+  os.OpProgress = progressBlocks
+
+  for _, item := range statusItems {
+    if strings.Contains(item, "speed") {
+      speed := strings.Split(item, "=")[1]
+      os.Speed = speed
+    }
+  }
+
+  return os, nil
 }
 
 func (ops *OpStatus) ProgressPercent() float32 {
@@ -181,6 +227,10 @@ func ParseArrayData(arrayData []string) (*ArrayData, error) {
 
         ad.OpStatus = opStatus
       }
+    }
+
+    if ad.OpStatus == nil {
+      ad.OpStatus = &OpStatus{Type: OpStatusTypeIdle}
     }
   }
 
