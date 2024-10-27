@@ -59,7 +59,7 @@ type OpStatus struct {
   Type        OpStatusType  `json:"op_status_type"`
   OpProgress  int64         `json:"op_progress"`
   OpTotal     int64         `json:"op_total"`
-  Speed       string         `json:"op_speed"`
+  Speed       string        `json:"op_speed"`
 }
 
 func ParseOpStatus(data string) (*OpStatus, error) {
